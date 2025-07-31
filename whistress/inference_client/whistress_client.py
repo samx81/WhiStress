@@ -9,14 +9,15 @@ class WhiStressInferenceClient:
         self.whistress = get_loaded_model(self.device)
 
     def predict(
-        self, audio: Dict[str, Union[np.ndarray, int]], transcription=None, return_pairs=True
+        self, audio: Dict[str, Union[np.ndarray, int]], transcription=None, return_pairs=True, threshold: float=0.1
     ):
         word_emphasis_pairs = scored_transcription(
             audio=audio, 
             model=self.whistress, 
             device=self.device, 
             strip_words=True, 
-            transcription=transcription
+            transcription=transcription,
+            threshold=threshold
         )
         if return_pairs:
             return word_emphasis_pairs

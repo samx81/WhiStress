@@ -54,13 +54,17 @@ def get_word_emphasis_pairs(
     return list(zip(transcription_preds_words, emphasis_preds_list))
 
 
-def inference_from_audio(audio: np.ndarray, model: WhiStress, device: str):
+def inference_from_audio(audio: np.ndarray, model: WhiStress, device: str, threshold: float=0.1):
     input_features = model.processor.feature_extractor(
         audio, sampling_rate=16000, return_tensors="pt"
     )["input_features"]
     out_model = model.generate_dual(input_features=input_features.to(device))
     emphasis_probs = F.softmax(out_model.logits, dim=-1)
-    emphasis_preds = torch.argmax(emphasis_probs, dim=-1)
+    if threshold:
+        custom_preds = emphasis_probs.cpu()[:, :, 1] > threshold
+        emphasis_preds = custom_preds.int()
+    else:
+        emphasis_preds = torch.argmax(emphasis_probs, dim=-1)
     emphasis_preds_right_shifted = torch.cat((emphasis_preds[:, -1:], emphasis_preds[:, :-1]), dim=1)
     word_emphasis_pairs = get_word_emphasis_pairs(
         out_model.preds[0],
@@ -121,7 +125,7 @@ def merge_stressed_tokens(tokens_with_stress):
 
 
 def inference_from_audio_and_transcription(
-    audio: np.ndarray, transcription, model: WhiStress, device: str
+    audio: np.ndarray, transcription, model: WhiStress, device: str, threshold: float = 0.1
 ):
     input_features = model.processor.feature_extractor(
         audio, sampling_rate=16000, return_tensors="pt"
@@ -139,7 +143,11 @@ def inference_from_audio_and_transcription(
                     decoder_input_ids=input_ids.to(device),
                 )
     emphasis_probs = F.softmax(out_model.logits, dim=-1)
-    emphasis_preds = torch.argmax(emphasis_probs, dim=-1)
+    if threshold:
+        custom_preds = emphasis_probs.cpu()[:, :, 1] > threshold
+        emphasis_preds = custom_preds.int()
+    else:
+        emphasis_preds = torch.argmax(emphasis_probs, dim=-1)
     emphasis_preds_right_shifted = torch.cat((emphasis_preds[:, -1:], emphasis_preds[:, :-1]), dim=1)
     word_emphasis_pairs = get_word_emphasis_pairs(
         input_ids[0],
@@ -149,13 +157,13 @@ def inference_from_audio_and_transcription(
     )
     return word_emphasis_pairs
 
-def scored_transcription(audio, model, strip_words=True, transcription: str = None, device="cuda"):
+def scored_transcription(audio, model, strip_words=True, transcription: str = None, device="cuda", threshold=0.1):
     audio_arr = prepare_audio(audio)
     token_stress_pairs = None
     if transcription: # if we want to use the ground truth transcription
-        token_stress_pairs = inference_from_audio_and_transcription(audio_arr, transcription, model, device)
+        token_stress_pairs = inference_from_audio_and_transcription(audio_arr, transcription, model, device, threshold)
     else:
-        token_stress_pairs = inference_from_audio(audio_arr, model, device)
+        token_stress_pairs = inference_from_audio(audio_arr, model, device, threshold)
     # token_stress_pairs = inference_from_audio(audio_arr, model)
     word_level_stress = merge_stressed_tokens(token_stress_pairs)
     if strip_words:
